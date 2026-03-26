@@ -1729,10 +1729,10 @@ function HostingGuide(){
       <p>Firebase blocks all reads/writes by default after 30 days. Set these rules once and your app works forever. No Storage upgrade needed — photos are stored directly in Firestore for free.</p>
       <div className="step-list">
         {[
-          ['1','Go to console.firebase.google.com → click your project "utrust-app"'],
-          ['2','In the left sidebar click "Firestore Database" → click the "Rules" tab at the top'],
-          ['3','Delete everything in the rules box and paste this exactly:'],
-        ].map(([n,t])=><div key={n} className="step-li"><span className="step-li-num">{n}</span><span>{t}</span></div>)}
+          ['s1-1','1','Go to console.firebase.google.com → click your project "utrust-app"'],
+          ['s1-2','2','In the left sidebar click "Firestore Database" → click the "Rules" tab at the top'],
+          ['s1-3','3','Delete everything in the rules box and paste this exactly:'],
+        ].map(([key,n,t])=><div key={key} className="step-li"><span className="step-li-num">{n}</span><span>{t}</span></div>)}
       </div>
       <div style={{background:'var(--surface3)',border:'1px solid var(--border2)',borderRadius:'var(--radius)',padding:'14px',margin:'12px 0',fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--accent)',lineHeight:1.8,whiteSpace:'pre'}}>
 {`rules_version = '2';
@@ -1745,7 +1745,7 @@ service cloud.firestore {
 }`}
       </div>
       <div className="step-list">
-        {[['4','Click the blue "Publish" button — done! No Storage setup needed.']].map(([n,t])=><div key={n} className="step-li"><span className="step-li-num">{n}</span><span>{t}</span></div>)}
+        {[['s1-4','4','Click the blue "Publish" button — done! No Storage setup needed.']].map(([key,n,t])=><div key={key} className="step-li"><span className="step-li-num">{n}</span><span>{t}</span></div>)}
       </div>
       <div className="note-box">✓ Photos are compressed &amp; stored directly in Firestore — no paid Storage plan required. Free Spark plan handles everything.</div>
     </div>
@@ -1755,13 +1755,13 @@ service cloud.firestore {
       <p>Your app file (index.html) already has Firebase built in. Just upload it to GitHub and it connects automatically.</p>
       <div className="step-list">
         {[
-          ['1','Download the latest index.html from Claude'],
-          ['2','Go to github.com → your repository "utrust"'],
-          ['3','Click on the existing index.html file → click the pencil ✏️ edit icon'],
-          ['4','Delete all the content → paste the new file content → click "Commit changes"'],
-          ['5','Wait 2–3 minutes → your live URL updates automatically'],
-          ['6','Open https://gauravmarotii.github.io/utrust → login → check for green "Cloud Live" indicator'],
-        ].map(([n,t])=><div key={n} className="step-li"><span className="step-li-num">{n}</span><span>{t}</span></div>)}
+          ['s2-1','1','Download the latest index.html from Claude'],
+          ['s2-2','2','Go to github.com → your repository "utrust"'],
+          ['s2-3','3','Click on the existing index.html file → click the pencil ✏️ edit icon'],
+          ['s2-4','4','Delete all the content → paste the new file content → click "Commit changes"'],
+          ['s2-5','5','Wait 2–3 minutes → your live URL updates automatically'],
+          ['s2-6','6','Open https://gauravmarotii.github.io/utrust → login → check for green "Cloud Live" indicator'],
+        ].map(([key,n,t])=><div key={key} className="step-li"><span className="step-li-num">{n}</span><span>{t}</span></div>)}
       </div>
     </div>
 
@@ -1769,14 +1769,16 @@ service cloud.firestore {
       <h3>📱 What your team will see</h3>
       <div className="step-list">
         {[
-          ['✅','Data saved permanently — never lost on refresh'],
-          ['✅','All 3 branches see the same data in real time'],
-          ['✅','Photos uploaded to Firebase Storage (5 GB free)'],
-          ['✅','Incharge sees submissions from all evaluators instantly'],
-          ['✅','Admin can view, approve, delete from any device'],
-          ['📶','Offline: form still works without internet, but submitting requires connection'],
-          ['📷','Camera: allow camera permission when browser asks on first use'],
-        ].map(([icon,text])=><div key={icon} className="step-li"><span className="step-li-num">{icon}</span><span>{text}</span></div>)}
+          'Data saved permanently — never lost on refresh',
+          'All 3 branches see the same data in real time',
+          'Photos compressed & stored in Firestore for free',
+          'Incharge sees submissions from all evaluators instantly',
+          'Admin can view, approve, delete from any device',
+          'Offline: form still works without internet, submitting needs connection',
+          'Camera: allow camera permission when browser asks on first use',
+        ].map((text,i)=><div key={i} className="step-li">
+          <span className="step-li-num">{i<5?'✓':'ℹ'}</span><span>{text}</span>
+        </div>)}
       </div>
     </div>
   </div>;
