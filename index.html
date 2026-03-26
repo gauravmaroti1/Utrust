@@ -403,9 +403,10 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ═══════════════════════════════════════════════════════
-//  CREDENTIALS DATABASE
+//  CREDENTIALS — mutable at runtime (admin can edit)
 // ═══════════════════════════════════════════════════════
-const CREDENTIALS=[
+// Using a module-level array + listener pattern so Login always reads latest
+let CRED_LIST=[
   {id:'U001',username:'admin',password:'Utrust@Admin2025',name:'Utrust Admin',role:'admin',email:'admin@utrust.in',avatar:'UA',branch:'HQ',phone:''},
   {id:'U002',username:'incharge',password:'Utrust@TL2025',name:'Utrust Incharge',role:'leader',email:'incharge@utrust.in',avatar:'UI',branch:'All Branches',phone:''},
   {id:'U003',username:'eval.purnea1',password:'Purnea@Eval1',name:'Evaluator Purnea 1',role:'officer',email:'eval1@utrust-purnea.in',avatar:'P1',branch:'Purnea',phone:''},
@@ -415,6 +416,8 @@ const CREDENTIALS=[
   {id:'U007',username:'eval.forbesganj1',password:'Forbes@Eval1',name:'Evaluator Forbesganj 1',role:'officer',email:'eval1@utrust-forbesganj.in',avatar:'F1',branch:'Forbesganj',phone:''},
   {id:'U008',username:'eval.forbesganj2',password:'Forbes@Eval2',name:'Evaluator Forbesganj 2',role:'officer',email:'eval2@utrust-forbesganj.in',avatar:'F2',branch:'Forbesganj',phone:''},
 ];
+// Keep old name working for any remaining references
+const CREDENTIALS=CRED_LIST;
 
 // ═══════════════════════════════════════════════════════
 //  CAR DATABASE
@@ -567,87 +570,125 @@ const fmt=n=>n?`₹${Math.round(n).toLocaleString('en-IN')}`:'—';
 const fmtL=n=>n?`₹${(n/100000).toFixed(2)}L`:'—';
 
 // ═══════════════════════════════════════════════════════
-//  CAMERA COMPONENT
+//  CAMERA COMPONENT — fixed rear-first, retake, flip
 // ═══════════════════════════════════════════════════════
 function CameraCapture({label,onCapture,captured}){
   const videoRef=useRef(null);
   const canvasRef=useRef(null);
+  const streamRef=useRef(null);
   const [open,setOpen]=useState(false);
-  const [stream,setStream]=useState(null);
   const [err,setErr]=useState('');
-  const [facingMode,setFacingMode]=useState('environment');
+  const [facing,setFacing]=useState('environment'); // environment = rear camera
 
-  async function startCamera(){
+  async function startCamera(facingMode){
     setErr('');
+    // Stop any existing stream first
+    if(streamRef.current){
+      streamRef.current.getTracks().forEach(t=>t.stop());
+      streamRef.current=null;
+    }
+    const constraints={
+      video:{
+        facingMode:{ideal:facingMode||'environment'},
+        width:{ideal:1280},
+        height:{ideal:960},
+      }
+    };
     try{
-      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:1920},height:{ideal:1080}}});
-      setStream(s);
-      if(videoRef.current)videoRef.current.srcObject=s;
+      const s=await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current=s;
+      if(videoRef.current){
+        videoRef.current.srcObject=s;
+        await videoRef.current.play().catch(()=>{});
+      }
+      setFacing(facingMode||'environment');
       setOpen(true);
     }catch(e){
-      setErr('Camera access denied. Please allow camera permission and try again.');
+      // Fallback: try without facingMode constraint
+      try{
+        const s2=await navigator.mediaDevices.getUserMedia({video:true});
+        streamRef.current=s2;
+        if(videoRef.current){
+          videoRef.current.srcObject=s2;
+          await videoRef.current.play().catch(()=>{});
+        }
+        setOpen(true);
+      }catch(e2){
+        setErr('Camera access denied. Please allow camera permission in your browser settings.');
+      }
     }
   }
+
   function stopCamera(){
-    if(stream)stream.getTracks().forEach(t=>t.stop());
-    setStream(null);setOpen(false);
+    if(streamRef.current){
+      streamRef.current.getTracks().forEach(t=>t.stop());
+      streamRef.current=null;
+    }
+    if(videoRef.current) videoRef.current.srcObject=null;
+    setOpen(false);
   }
+
   function capture(){
     const v=videoRef.current,c=canvasRef.current;
     if(!v||!c)return;
-    c.width=v.videoWidth;c.height=v.videoHeight;
+    c.width=v.videoWidth||640;
+    c.height=v.videoHeight||480;
     const ctx=c.getContext('2d');
-    ctx.drawImage(v,0,0);
-    // Add timestamp
-    const now=new Date();
-    const ts=now.toLocaleString('en-IN');
-    ctx.fillStyle='rgba(0,0,0,0.6)';
-    ctx.fillRect(0,c.height-36,c.width,36);
+    ctx.drawImage(v,0,0,c.width,c.height);
+    // Timestamp watermark
+    const ts=new Date().toLocaleString('en-IN');
+    const barH=Math.round(c.height*0.06);
+    ctx.fillStyle='rgba(0,0,0,0.65)';
+    ctx.fillRect(0,c.height-barH,c.width,barH);
     ctx.fillStyle='#f5a623';
-    ctx.font='bold 16px monospace';
-    ctx.fillText('📍 '+ts+' | Utrust',10,c.height-12);
-    const dataUrl=c.toDataURL('image/jpeg',0.92);
-    onCapture(dataUrl);
+    ctx.font=`bold ${Math.round(barH*0.55)}px monospace`;
+    ctx.fillText('📍 '+ts+' | Utrust',10,c.height-Math.round(barH*0.22));
+    const dataUrl=c.toDataURL('image/jpeg',0.88);
     stopCamera();
-  }
-  async function switchCamera(){
-    if(stream)stream.getTracks().forEach(t=>t.stop());
-    const next=facingMode==='environment'?'user':'environment';
-    setFacingMode(next);
-    try{
-      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:next}});
-      setStream(s);
-      if(videoRef.current)videoRef.current.srcObject=s;
-    }catch(e){}
+    onCapture(dataUrl);
   }
 
+  async function flipCamera(){
+    const next=facing==='environment'?'user':'environment';
+    await startCamera(next);
+  }
+
+  // Cleanup on unmount
+  useEffect(()=>()=>{
+    if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop());
+  },[]);
+
   return<>
-    <div className={`camera-slot ${captured?'captured':''}`} onClick={()=>!captured&&startCamera()}>
+    <div className={`camera-slot ${captured?'captured':''}`} onClick={()=>{ if(!captured){ startCamera(facing); } }}>
       <div className="camera-slot-preview">
         {captured
-          ?<img src={captured} alt={label}/>
+          ?<img src={captured} alt={label} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
           :<div className="camera-slot-placeholder">
-            <span style={{fontSize:28,marginBottom:6}}>📷</span>
-            <span style={{fontSize:11,color:'var(--text3)',textAlign:'center'}}>{err||'Tap to capture'}</span>
+            <span style={{fontSize:26,marginBottom:6}}>📷</span>
+            <span style={{fontSize:11,color:err?'var(--red)':'var(--text3)',textAlign:'center',padding:'0 4px'}}>{err||'Tap to capture'}</span>
           </div>
         }
       </div>
-      <div className="camera-slot-label">{label}{captured&&' ✓'}</div>
+      <div className="camera-slot-label">{label}{captured?' ✓':''}</div>
     </div>
-    {captured&&<button className="btn btn-danger btn-sm" style={{marginTop:4,width:'100%'}} onClick={e=>{e.stopPropagation();onCapture(null);}}>Retake</button>}
+    {captured&&<div style={{display:'flex',gap:4,marginTop:4}}>
+      <button className="btn btn-danger btn-sm" style={{flex:1}} onClick={e=>{e.stopPropagation();onCapture(null);startCamera(facing);}}>🔄 Retake</button>
+    </div>}
 
-    {open&&<div className="camera-modal">
-      <div style={{color:'#fff',fontFamily:'Syne,sans-serif',fontSize:16,fontWeight:700,marginBottom:12}}>{label}</div>
-      <div className="camera-modal-video">
-        <video ref={videoRef} autoPlay playsInline muted style={{width:'100%',display:'block'}}/>
+    {open&&<div className="camera-modal" style={{zIndex:500}}>
+      <div style={{color:'#fff',fontFamily:'Syne,sans-serif',fontSize:15,fontWeight:700,marginBottom:10,textAlign:'center'}}>{label}</div>
+      <div className="camera-modal-video" style={{position:'relative',width:'100%',maxWidth:480,borderRadius:12,overflow:'hidden',background:'#000'}}>
+        <video ref={videoRef} autoPlay playsInline muted style={{width:'100%',display:'block',minHeight:200}}/>
         <canvas ref={canvasRef} style={{display:'none'}}/>
       </div>
-      <div className="camera-modal-actions">
-        <button className="btn btn-ghost" onClick={stopCamera}>✕ Cancel</button>
-        <button className="shutter-btn" onClick={capture}>📸</button>
-        <button className="btn btn-ghost" onClick={switchCamera}>🔄 Flip</button>
+      <div className="camera-modal-actions" style={{marginTop:14}}>
+        <button className="btn btn-ghost" style={{minWidth:80}} onClick={stopCamera}>✕ Cancel</button>
+        <button className="shutter-btn" onClick={capture} title="Capture photo">📸</button>
+        <button className="btn btn-ghost" style={{minWidth:80}} onClick={flipCamera}>🔄 Flip</button>
       </div>
-      <div style={{color:'var(--text3)',fontSize:11,marginTop:10,fontFamily:'DM Mono,monospace'}}>Timestamp will be auto-embedded on photo</div>
+      <div style={{color:'var(--text3)',fontSize:10,marginTop:8,fontFamily:'DM Mono,monospace',textAlign:'center'}}>
+        {facing==='environment'?'🔙 Rear camera':'🤳 Front camera'} · Timestamp auto-embedded
+      </div>
     </div>}
   </>;
 }
@@ -660,10 +701,14 @@ function Login({onLogin}){
   const [password,setPassword]=useState('');
   const [err,setErr]=useState('');
   const [showCreds,setShowCreds]=useState(false);
+  const [credList,setCredList]=useState([...CRED_LIST]);
+
+  // Re-read CRED_LIST each time the login page renders (catches admin edits)
+  useEffect(()=>{ setCredList([...CRED_LIST]); },[]);
 
   function login(){
-    const u=CREDENTIALS.find(c=>c.username===username.trim()&&c.password===password);
-    if(u){onLogin(u);setErr('');}
+    const u=CRED_LIST.find(c=>c.username===username.trim()&&c.password===password);
+    if(u){onLogin({...u});setErr('');}
     else setErr('Invalid username or password. Check credentials below.');
   }
 
@@ -692,7 +737,7 @@ function Login({onLogin}){
 
       {showCreds&&<div className="creds-box" style={{marginTop:14}}>
         <div className="creds-title">All System Credentials</div>
-        {CREDENTIALS.map(c=><div key={c.id} className="cred-row">
+        {credList.map(c=><div key={c.id} className="cred-row">
           <span className="cred-key">{c.name} ({c.branch})</span>
           <span className="cred-val">{c.username} / {c.password}</span>
         </div>)}
@@ -910,7 +955,7 @@ function NewInspection({user,onSubmit,onCancel,showToast}){
     engine:'',tyres:'',battery:'',electricals:'',accidental:'No',flood:'No',rating:7,
     price:'',remarks:'',
     photos:{front:null,rear:null,left:null,right:null,interior1:null,interior2:null,engine:null,chassis:null,odometer_photo:null},
-    docs:{rc:false,insurance:false,pollution:false},
+    docs:{rc:null,insurance:null,pollution:null,extra:null},
   });
 
   const set=(k,v)=>setData(p=>({...p,[k]:v}));
@@ -932,6 +977,9 @@ function NewInspection({user,onSubmit,onCancel,showToast}){
     const finalYear=data.year==='-- Enter Manually --'?manualYear:data.year;
     const finalTransmission=data.transmission==='-- Enter Manually --'?manualTransmission:data.transmission;
     if(!isDraft&&(!finalBrand||!finalModel||!data.reg)){showToast('Please fill all required fields','error');return;}
+    // Strip binary doc data — store only filenames (keep photos for compression/upload)
+    const docsForStore={};
+    Object.entries(data.docs).forEach(([k,v])=>{ docsForStore[k]=v?{name:v.name,type:v.type}:null; });
     const vehicle={
       id:'V'+Date.now(),
       ...data,
@@ -943,6 +991,7 @@ function NewInspection({user,onSubmit,onCancel,showToast}){
       officer:user.name,
       officerId:user.id,
       branch:user.branch,
+      docs:docsForStore,
       status:isDraft?'draft':'pending',
       submitted:new Date().toISOString().slice(0,10),
     };
@@ -1075,23 +1124,45 @@ function NewInspection({user,onSubmit,onCancel,showToast}){
     // 3: Documents
     <div className="form-card">
       <div className="form-card-title">📋 Document Upload</div>
-      <div className="form-card-sub">Capture or upload required documents. RC and Insurance are mandatory.</div>
+      <div className="form-card-sub">Upload or capture required documents. RC and Insurance are mandatory.</div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
-        {[['rc','📄','RC (Registration Certificate) *'],['insurance','🛡','Insurance Document *'],['pollution','🌿','Pollution Certificate (PUC)']].map(([k,icon,label])=>
-          <div key={k}>
-            <div className={`upload-zone ${data.docs[k]?'uploaded':''}`} onClick={()=>setDoc(k,true)}>
-              <span className="upload-icon">{data.docs[k]?'✅':icon}</span>
-              <div className="upload-label">{data.docs[k]?'Uploaded ✓':'Tap to Upload'}</div>
-              <div className="upload-sub">{label}</div>
+        {[['rc','📄','RC Certificate *'],['insurance','🛡','Insurance Doc *'],['pollution','🌿','PUC Certificate']].map(([k,icon,label])=>{
+          const val=data.docs[k];
+          return<div key={k}>
+            <input type="file" id={`doc-${k}`} accept="image/*,application/pdf" style={{display:'none'}}
+              onChange={e=>{
+                const file=e.target.files[0];
+                if(!file)return;
+                const reader=new FileReader();
+                reader.onload=ev=>setDoc(k,{name:file.name,data:ev.target.result,type:file.type});
+                reader.readAsDataURL(file);
+              }}/>
+            <div className={`upload-zone ${val?'uploaded':''}`}
+              onClick={()=>document.getElementById(`doc-${k}`).click()}>
+              <span className="upload-icon">{val?'✅':icon}</span>
+              <div className="upload-label">{val?'Uploaded ✓':'Tap to Upload'}</div>
+              <div className="upload-sub" style={{wordBreak:'break-all'}}>{val?val.name:label}</div>
             </div>
-            {data.docs[k]&&<button className="btn btn-danger btn-sm" style={{marginTop:4,width:'100%'}} onClick={e=>{e.stopPropagation();setDoc(k,false);}}>Remove</button>}
-          </div>
-        )}
+            {val&&<button className="btn btn-danger btn-sm" style={{marginTop:4,width:'100%'}}
+              onClick={e=>{e.stopPropagation();setDoc(k,null);document.getElementById(`doc-${k}`).value='';}}>
+              Remove
+            </button>}
+          </div>;
+        })}
       </div>
       <div style={{marginTop:14}}>
-        <div className="upload-zone" onClick={()=>{}}>
-          <span className="upload-icon">📎</span>
-          <div className="upload-label">Additional Documents</div>
+        <input type="file" id="doc-extra" accept="image/*,application/pdf" style={{display:'none'}}
+          onChange={e=>{
+            const file=e.target.files[0];
+            if(!file)return;
+            const reader=new FileReader();
+            reader.onload=ev=>setDoc('extra',{name:file.name,data:ev.target.result,type:file.type});
+            reader.readAsDataURL(file);
+          }}/>
+        <div className={`upload-zone ${data.docs.extra?'uploaded':''}`}
+          onClick={()=>document.getElementById('doc-extra').click()}>
+          <span className="upload-icon">{data.docs.extra?'✅':'📎'}</span>
+          <div className="upload-label">{data.docs.extra?data.docs.extra.name:'Additional Document'}</div>
           <div className="upload-sub">Service history, warranty, NOC etc.</div>
         </div>
       </div>
@@ -1222,14 +1293,19 @@ function NewInspection({user,onSubmit,onCancel,showToast}){
           ['TP Insurance',data.insurance_valid_tp||'—'],
           ['IDV',fmtL(data.idv)],['Estimated Price',fmtL(data.price)],
           ['Engine',data.engine||'—'],['Accidental',data.accidental||'—'],
-          ['Photos',`${photoCaptured}/8 captured`],['Branch',user.branch],
+          ['Photos',`${photoCaptured}/8 captured`],
+          ['RC Doc',data.docs.rc?'✓ '+data.docs.rc.name:'Not uploaded'],
+          ['Insurance Doc',data.docs.insurance?'✓ '+data.docs.insurance.name:'Not uploaded'],
         ].map(([k,v])=><div key={k} style={{padding:'9px 12px',background:'var(--surface2)',borderRadius:'var(--radius)',border:'1px solid var(--border)'}}>
           <div style={{fontSize:9,color:'var(--text3)',fontFamily:'DM Mono,monospace',letterSpacing:'0.07em',textTransform:'uppercase'}}>{k}</div>
-          <div style={{fontSize:13,fontWeight:600,marginTop:2,color:k==='Photos'&&photoCaptured<8?'var(--red)':'var(--text)'}}>{v}</div>
+          <div style={{fontSize:12,fontWeight:600,marginTop:2,wordBreak:'break-word',color:(k==='Photos'&&photoCaptured<8)||(k==='RC Doc'&&!data.docs.rc)||(k==='Insurance Doc'&&!data.docs.insurance)?'var(--red)':v.startsWith('✓')?'var(--green)':'var(--text)'}}>{v}</div>
         </div>)}
       </div>
-      {photoCaptured<8&&<div style={{background:'var(--red-dim)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--radius)',padding:'10px 14px',fontSize:12,color:'var(--red)',marginBottom:14}}>
+      {photoCaptured<8&&<div style={{background:'var(--red-dim)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--radius)',padding:'10px 14px',fontSize:12,color:'var(--red)',marginBottom:10}}>
         ⚠ Only {photoCaptured}/8 photos captured. All photos are mandatory before submission. (2 interior photos required)
+      </div>}
+      {(!data.docs.rc||!data.docs.insurance)&&<div style={{background:'var(--red-dim)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--radius)',padding:'10px 14px',fontSize:12,color:'var(--red)',marginBottom:10}}>
+        ⚠ RC and Insurance documents are mandatory. Please upload them in Step 4.
       </div>}
       <div style={{background:'var(--accent-dim)',border:'1px solid rgba(245,166,35,0.25)',borderRadius:'var(--radius)',padding:12,fontSize:12,color:'var(--accent)'}}>
         🚀 Submitting will send this inspection to <b>Utrust Incharge</b> for review and price approval.
@@ -1269,6 +1345,8 @@ function VehicleDetail({vehicle,user,onBack,onApprove,onReject,onGeneratePDF,onU
   const algo=estimatePrice(vehicle.idv,vehicle.year,vehicle.accidental,vehicle.claim_history,vehicle.odometer,vehicle.engine,vehicle.fuel);
   const photoKeys=['front','rear','left','right','interior1','interior2','engine','chassis'];
   const photoLabels={front:'FRONT',rear:'REAR',left:'LEFT',right:'RIGHT',interior1:'INTERIOR 1',interior2:'INTERIOR 2',engine:'ENGINE',chassis:'CHASSIS'};
+  // Normalise — Firestore may store as photoUrls, local state uses photos
+  const photoMap=vehicle.photos||vehicle.photoUrls||{};
 
   return<div>
     <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:22,flexWrap:'wrap'}}>
@@ -1301,6 +1379,15 @@ function VehicleDetail({vehicle,user,onBack,onApprove,onReject,onGeneratePDF,onU
             <div key={k} className="detail-row"><span className="detail-key">{k}</span><span className="detail-val">{v||'—'}</span></div>
           )}
         </div>
+        <div className="detail-card" style={{marginBottom:14}}>
+          <div className="detail-card-title">📋 Documents</div>
+          {[['RC Certificate',vehicle.docs?.rc],['Insurance Doc',vehicle.docs?.insurance],['PUC Certificate',vehicle.docs?.pollution],['Additional',vehicle.docs?.extra]].map(([label,doc])=>
+            <div key={label} className="detail-row">
+              <span className="detail-key">{label}</span>
+              <span className="detail-val" style={{color:doc?'var(--green)':'var(--text3)',fontSize:11}}>{doc?'✓ '+doc.name:'Not uploaded'}</span>
+            </div>
+          )}
+        </div>
         <div className="detail-card">
           <div className="detail-card-title">💰 Price Details</div>
           <div style={{padding:'12px 0',textAlign:'center'}}>
@@ -1325,14 +1412,18 @@ function VehicleDetail({vehicle,user,onBack,onApprove,onReject,onGeneratePDF,onU
 
       <div>
         <div className="detail-card" style={{marginBottom:14}}>
-          <div className="detail-card-title">📷 Photos</div>
+          <div className="detail-card-title">📷 Photos <span style={{fontSize:10,color:'var(--text3)',fontWeight:400}}>(tap to enlarge)</span></div>
           <div className="photo-grid">
-            {photoKeys.map(k=><div key={k}>
-              <div className="photo-thumb">
-                {vehicle.photos&&vehicle.photos[k]?<img src={vehicle.photos[k]} alt={k}/>:<span style={{fontSize:18}}>📷</span>}
-              </div>
-              <div className="photo-label">{photoLabels[k]||k.toUpperCase()}</div>
-            </div>)}
+            {photoKeys.map(k=>{
+              const src=photoMap[k];
+              return<div key={k}>
+                <div className="photo-thumb" style={{cursor:src?'pointer':'default'}}
+                  onClick={()=>{if(src){const w=window.open('','_blank');w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain"/><p style="position:fixed;bottom:10px;left:10px;color:#f5a623;font-family:monospace;font-size:12px">${photoLabels[k]} — ${vehicle.reg}</p></body></html>`);w.document.close();}}}>
+                  {src?<img src={src} alt={k} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontSize:18,opacity:0.35}}>📷</span>}
+                </div>
+                <div className="photo-label" style={{color:src?'var(--green)':'var(--text3)'}}>{photoLabels[k]||k.toUpperCase()}{src?' ✓':''}</div>
+              </div>;
+            })}
           </div>
         </div>
         <div className="detail-card" style={{marginBottom:14}}>
@@ -1465,29 +1556,55 @@ function Approvals({vehicles,user,onApprove,onReject,setPage,setSelectedVehicle}
 //  EMPLOYEE DATABASE (Admin only)
 // ═══════════════════════════════════════════════════════
 function EmployeeDB({vehicles,showToast}){
-  const [users,setUsers]=useState(CREDENTIALS);
+  // Read from CRED_LIST — if localStorage has saved edits, use those
+  function loadUsers(){
+    try{
+      const saved=localStorage.getItem('utrust_credentials');
+      if(saved){
+        const parsed=JSON.parse(saved);
+        // Sync parsed back into CRED_LIST so login reads it too
+        CRED_LIST.length=0;
+        parsed.forEach(u=>CRED_LIST.push(u));
+        return parsed;
+      }
+    }catch(e){}
+    return [...CRED_LIST];
+  }
+  const [users,setUsers]=useState(()=>loadUsers());
   const [modal,setModal]=useState(null);
   const [editing,setEditing]=useState(null);
   const [form,setForm]=useState({name:'',username:'',password:'',role:'officer',branch:'Purnea',email:'',phone:''});
   const roleColors={admin:'var(--purple)',leader:'var(--blue)',officer:'var(--green)'};
   const roleLabels={admin:'ADMIN',leader:'UTRUST INCHARGE',officer:'UTRUST EVALUATOR'};
 
+  function persistUsers(newList){
+    // Save to localStorage AND update the live CRED_LIST array
+    localStorage.setItem('utrust_credentials',JSON.stringify(newList));
+    CRED_LIST.length=0;
+    newList.forEach(u=>CRED_LIST.push(u));
+    setUsers(newList);
+  }
+
   function openAdd(){setForm({name:'',username:'',password:'',role:'officer',branch:'Purnea',email:'',phone:''});setEditing(null);setModal('form');}
   function openEdit(u){setForm({...u});setEditing(u.id);setModal('form');}
   function saveUser(){
     if(!form.name||!form.username||!form.password){showToast('Name, username and password required','error');return;}
+    let newList;
     if(editing){
-      setUsers(us=>us.map(u=>u.id===editing?{...u,...form}:u));
-      showToast('Employee updated','success');
+      newList=users.map(u=>u.id===editing?{...u,...form}:u);
+      showToast('Employee updated — new password active immediately','success');
     }else{
-      setUsers(us=>[...us,{...form,id:'U'+Date.now(),avatar:form.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}]);
+      const newUser={...form,id:'U'+Date.now(),avatar:form.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()};
+      newList=[...users,newUser];
       showToast('Employee added','success');
     }
+    persistUsers(newList);
     setModal(null);
   }
   function deleteUser(id){
     if(id==='U001'){showToast('Cannot delete admin','error');return;}
-    setUsers(us=>us.filter(u=>u.id!==id));
+    const newList=users.filter(u=>u.id!==id);
+    persistUsers(newList);
     showToast('Employee removed','info');
   }
 
@@ -1673,9 +1790,11 @@ function generatePDF(vehicle){
   const win=window.open('','_blank');
   const photoKeys=['front','rear','left','right','interior1','interior2','engine','chassis'];
   const pLabels={front:'FRONT',rear:'REAR',left:'LEFT SIDE',right:'RIGHT SIDE',interior1:'INTERIOR 1',interior2:'INTERIOR 2',engine:'ENGINE BAY',chassis:'CHASSIS / VIN'};
-  const photosHTML=photoKeys.map(k=>vehicle.photos&&vehicle.photos[k]
-    ?`<div><div style="width:100%;aspect-ratio:4/3;border-radius:6px;overflow:hidden;"><img src="${vehicle.photos[k]}" style="width:100%;height:100%;object-fit:cover;"/></div><div style="font-size:9px;text-align:center;margin-top:3px;color:#666;">${pLabels[k]||k.toUpperCase()}</div></div>`
-    :`<div><div style="width:100%;aspect-ratio:4/3;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:22px;">📷</div><div style="font-size:9px;text-align:center;margin-top:3px;color:#666;">${pLabels[k]||k.toUpperCase()}</div></div>`
+  // Normalise photo source — works for both local and Firestore data
+  const pm=vehicle.photos||vehicle.photoUrls||{};
+  const photosHTML=photoKeys.map(k=>pm[k]
+    ?`<div><div style="width:100%;aspect-ratio:4/3;border-radius:6px;overflow:hidden;border:1px solid #e0e0e0"><img src="${pm[k]}" style="width:100%;height:100%;object-fit:cover;" crossorigin="anonymous"/></div><div style="font-size:9px;text-align:center;margin-top:3px;color:#22c55e;font-weight:700">${pLabels[k]||k.toUpperCase()} ✓</div></div>`
+    :`<div><div style="width:100%;aspect-ratio:4/3;background:#f5f5f5;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;border:1px dashed #ccc">📷</div><div style="font-size:9px;text-align:center;margin-top:3px;color:#aaa;">${pLabels[k]||k.toUpperCase()}</div></div>`
   ).join('');
 
   win.document.write(`<!DOCTYPE html><html><head><title>Utrust Inspection — ${vehicle.reg}</title>
