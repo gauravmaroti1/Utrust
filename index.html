@@ -48,7 +48,8 @@ async function compressAllPhotos(photos) {
   var entries = Object.entries(photos || {});
   for (var idx = 0; idx < entries.length; idx++) {
     var key = entries[idx][0]; var val = entries[idx][1];
-    out[key] = val ? await compressImage(val) : null;
+    // Compress harder: max 640px, 40% quality to stay well under 1MB Firestore limit
+    out[key] = val ? await compressImage(val, 640, 0.40) : null;
   }
   return out;
 }
@@ -56,8 +57,18 @@ async function compressAllPhotos(photos) {
 async function fbSaveVehicle(vehicle) {
   var photos = vehicle.photos; var rest = Object.assign({}, vehicle);
   delete rest.photos;
+  delete rest.id; // let Firestore assign the real ID
+  // Strip null docs to keep doc small
+  if (rest.docs) {
+    var cleanDocs = {};
+    Object.keys(rest.docs).forEach(function(k){ if(rest.docs[k]) cleanDocs[k]=rest.docs[k]; });
+    rest.docs = cleanDocs;
+  }
   var compPhotos = await compressAllPhotos(photos || {});
-  var docRef = await addDoc(collection(db, 'vehicles'), Object.assign({}, rest, { photos: compPhotos, createdAt: serverTimestamp() }));
+  // Strip null photos
+  var finalPhotos = {};
+  Object.keys(compPhotos).forEach(function(k){ if(compPhotos[k]) finalPhotos[k]=compPhotos[k]; });
+  var docRef = await addDoc(collection(db, 'vehicles'), Object.assign({}, rest, { photos: finalPhotos, createdAt: serverTimestamp() }));
   await updateDoc(docRef, { id: docRef.id });
   return docRef.id;
 }
@@ -507,7 +518,8 @@ function calcAlgo(idv, purchaseVal, year, insExpired, accidental, claimHistory, 
   var depN = [0,0.05,0.10,0.15,0.20,0.25,0.30,0.38,0.46,0.52,0.58,0.63,0.67,0.70,0.73,0.76,0.78,0.80,0.82,0.84,0.86];
   var depE = [0,0.08,0.14,0.20,0.27,0.33,0.40,0.48,0.55,0.61,0.66,0.71,0.75,0.78,0.81,0.84,0.86,0.88,0.89,0.90,0.91];
   var depTable = insExpired ? depE : depN;
-  var dep = depTable[Math.min(age, 20)] || 0.86;
+  var depIdx = Math.min(Math.max(age, 0), 20);
+  var dep = (depTable[depIdx] !== undefined) ? depTable[depIdx] : 0.86;
   var depAmt = price * dep;
   price -= depAmt;
   steps.push({label:'Age depreciation (' + age + 'yr, ' + Math.round(dep*100) + '%)', val:-depAmt, type:'minus'});
@@ -1149,6 +1161,11 @@ function NewInspection(props) {
       <div className="fcard">
         <div className="fcard-ttl">🛡 Insurance & IDV</div>
         <div className="fcard-sub">Toggle if insurance is expired — affects price algorithm</div>
+        <div style={{background:'var(--sur2)',border:'1px solid var(--bdr)',borderRadius:'var(--r)',padding:'10px 13px',marginBottom:14,fontSize:12,color:'var(--tx3)',lineHeight:1.6}}>
+          <b style={{color:'var(--acc)',display:'block',marginBottom:4}}>📐 How the algorithm works:</b>
+          <b>With active insurance:</b> Base = IDV → subtract age depreciation (RTO rates: 5%/yr up to 25% at 5yr, 86% at 20yr) → adjust for odometer, accidents, claim history, engine condition, fuel type → subtract 8% dealer margin.<br/>
+          <b>With expired insurance:</b> Base = Purchase value → extra 10% no-insurance penalty → higher depreciation table → same adjustments → 8% dealer margin.
+        </div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',background:data.insurance_expired?'var(--rdim)':'var(--sur2)',border:'1px solid '+(data.insurance_expired?'rgba(239,68,68,0.3)':'var(--bdr)'),borderRadius:'var(--r)',marginBottom:14}}>
           <div>
             <div style={{fontSize:13,fontWeight:600}}>Insurance Expired / Not Available</div>
@@ -1961,8 +1978,19 @@ function App() {
     try {
       unsub = window.FB.fbListenVehicles(function(docs) {
         setDbLive(true);
-        if (docs.length > 0) setVehicles(docs);
-        else window.FB.fbSeedIfEmpty(SAMPLE_VEHICLES).catch(function(){});
+        if (docs.length > 0) {
+          // Merge Firestore docs with any local-only drafts (temp IDs starting with 'V')
+          setVehicles(function(prev) {
+            var fsIds = docs.map(function(d){return d.id;});
+            // Keep local-only items (temp ID, not yet in Firestore)
+            var localOnly = prev.filter(function(v){
+              return v.id && v.id.startsWith('V') && !fsIds.includes(v.id);
+            });
+            return localOnly.concat(docs);
+          });
+        } else {
+          window.FB.fbSeedIfEmpty(SAMPLE_VEHICLES).catch(function(){});
+        }
       });
     } catch(e) { console.warn('Firestore unavailable', e); }
     return function() { if (unsub) unsub(); };
@@ -1996,17 +2024,32 @@ function App() {
 
   function handleNewVehicle(vehicle) {
     setSaving(true);
-    showToast('Saving to cloud...','info');
+    showToast('Saving inspection to cloud...','info');
+    // Add optimistic entry immediately so evaluator sees it
     setVehicles(function(vs){return [vehicle].concat(vs);});
     setPage('vehicles');
     if (fbReady && window.FB) {
-      window.FB.fbSaveVehicle(vehicle).then(function() {
+      window.FB.fbSaveVehicle(vehicle).then(function(newId) {
+        // Replace the temp-ID optimistic entry with the real Firestore ID
+        setVehicles(function(vs){
+          return vs.map(function(v){
+            return v.id === vehicle.id ? Object.assign({},v,{id:newId}) : v;
+          });
+        });
+        setSaving(false);
         showToast(vehicle.status==='draft'?'✓ Draft saved!':'✓ Submitted for Incharge approval!', 'success');
-        setSaving(false);
       }).catch(function(err) {
-        console.error('Save error:', err);
-        showToast('Network issue — inspection saved locally. Will sync when online.','info');
+        console.error('Firestore save error:', err.message || err);
         setSaving(false);
+        // Check if it's a Firestore permissions error
+        var msg = err && err.message ? err.message : '';
+        if (msg.includes('permission') || msg.includes('PERMISSION_DENIED')) {
+          showToast('Firestore rules need updating — go to Firebase Console > Rules and set: allow read, write: if true;','error');
+        } else if (msg.includes('quota') || msg.includes('resource-exhausted')) {
+          showToast('Firestore quota reached. Try again later.','error');
+        } else {
+          showToast('Save failed: ' + (msg || 'Check internet connection'),'error');
+        }
       });
     } else {
       setSaving(false);
