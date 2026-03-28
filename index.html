@@ -489,10 +489,12 @@ const VARIANTS = {
 
 // ── PRICE ALGORITHM ───────────────────────────────────────
 function calcAlgo(idv, purchaseVal, year, insExpired, accidental, claimHistory, odometer, engine, fuel) {
-  var base = insExpired ? purchaseVal : idv;
-  if (!base || !year) return null;
+  var baseRaw = insExpired ? purchaseVal : idv;
+  var base = parseFloat(baseRaw) || 0;
+  if (!base || base < 1000 || !year) return null;
   var age = new Date().getFullYear() - parseInt(year);
-  var price = parseFloat(base);
+  if (age < 0 || age > 30) return null;
+  var price = base;
   var steps = [];
   if (insExpired) {
     steps.push({label:'Base: purchase value (insurance expired)', val:price, type:'base'});
@@ -558,7 +560,11 @@ function calcAlgo(idv, purchaseVal, year, insExpired, accidental, claimHistory, 
 
 // ── HELPERS ───────────────────────────────────────────────
 const fmt = function(n) { return n ? '\u20B9' + Math.round(n).toLocaleString('en-IN') : '\u2014'; };
-const fmtL = function(n) { return n ? '\u20B9' + (n/100000).toFixed(2) + 'L' : '\u2014'; };
+const fmtL = function(n) {
+  if (!n || n < 100) return '\u2014';
+  if (n < 100000) return '\u20B9' + Math.round(n).toLocaleString('en-IN');
+  return '\u20B9' + (n/100000).toFixed(2) + 'L';
+};
 
 function StatusBadge(props) {
   var cls = {pending:'b-pend',approved:'b-appr',rejected:'b-rejt',draft:'b-drft',review:'b-revw'};
@@ -971,7 +977,12 @@ function NewInspection(props) {
   var algo = calcAlgo(data.idv, data.purchase_value, finalYear||data.year, data.insurance_expired, data.accidental, data.claim_history, data.odometer, data.engine, data.fuel);
 
   function handleSubmit(isDraft) {
-    if (!isDraft && (!finalBrand || !finalModel || !data.reg)) { props.showToast('Fill all required fields','error'); return; }
+    if (!isDraft) {
+      if (!data.reg) { props.showToast('Registration number is required','error'); return; }
+      if (!finalBrand && !mBrand) { props.showToast('Select or type a Brand','error'); return; }
+      if (!finalModel && !mModel) { props.showToast('Select or type a Model','error'); return; }
+      if (!data.price || parseInt(data.price) <= 0) { props.showToast('Enter your estimated price','error'); return; }
+    }
     var docsClean = {};
     Object.keys(data.docs).forEach(function(k){ var d=data.docs[k]; docsClean[k]=d?{name:d.name,type:d.type}:null; });
     props.onSubmit(Object.assign({},data,{
@@ -1330,7 +1341,7 @@ function NewInspection(props) {
           <button className="btn btn-ghost" onClick={function(){handleSubmit(true);}}>💾 Draft</button>
           {step < 7
             ? <button className="btn btn-acc" onClick={function(){setStep(step+1);}}>Next →</button>
-            : <button className="btn btn-acc" onClick={function(){handleSubmit(false);}}>🚀 Submit</button>
+            : <button className="btn btn-acc" style={{fontSize:15,padding:'10px 22px'}} onClick={function(){handleSubmit(false);}}>🚀 Submit for Approval</button>
           }
         </div>
       </div>
@@ -1990,11 +2001,17 @@ function App() {
     setPage('vehicles');
     if (fbReady && window.FB) {
       window.FB.fbSaveVehicle(vehicle).then(function() {
-        showToast(vehicle.status==='draft'?'Draft saved!':'Submitted for approval!', vehicle.status==='draft'?'info':'success');
-      }).catch(function() {
-        showToast('Saved locally (check connection)','info');
-      }).finally(function() { setSaving(false); });
-    } else { setSaving(false); showToast('Submitted!','success'); }
+        showToast(vehicle.status==='draft'?'✓ Draft saved!':'✓ Submitted for Incharge approval!', 'success');
+        setSaving(false);
+      }).catch(function(err) {
+        console.error('Save error:', err);
+        showToast('Network issue — inspection saved locally. Will sync when online.','info');
+        setSaving(false);
+      });
+    } else {
+      setSaving(false);
+      showToast(vehicle.status==='draft'?'✓ Draft saved!':'✓ Submitted for approval!','success');
+    }
   }
 
   function handleDelete(id) {
