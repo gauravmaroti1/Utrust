@@ -366,7 +366,7 @@ const {useState, useEffect, useRef} = React;
 
 // ── CREDENTIALS ──────────────────────────────────────────
 const DEFAULT_CREDS = [
-  {id:'U001',username:'admin',password:'Utrust@Admin2025',name:'Utrust Admin',role:'admin',email:'admin@utrust.in',avatar:'UA',branch:'HQ',phone:''},
+  {id:'U001',username:'admin',password:'Prakash@Utrust2026',name:'Utrust Admin',role:'admin',email:'admin@utrust.in',avatar:'UA',branch:'HQ',phone:''},
   {id:'U002',username:'dilnawaz.purnea',password:'Utrust@2025',name:'Dilnawaz Ahmad',role:'leader',email:'dilnawaz@utrust.in',avatar:'DA',branch:'Purnea',phone:'6287796605'},
   {id:'U003',username:'sajan.purnea',password:'Utrust@2025',name:'Sajan Kr Saha',role:'officer',email:'sajan@utrust.in',avatar:'SS',branch:'Purnea',phone:'9264476721'},
   {id:'U004',username:'ravi.purnea',password:'Utrust@2025',name:'Ravi Yadav',role:'officer',email:'ravi.y@utrust.in',avatar:'RY',branch:'Purnea',phone:'9264476725'},
@@ -933,9 +933,10 @@ function VehiclesList(props) {
                   <td style={{fontFamily:'DM Mono,monospace',fontWeight:700,color:'var(--grn)'}}>{fmtL(v.price)}</td>
                   <td><StatusBadge status={v.status} /></td>
                   <td>
-                    <div style={{display:'flex',gap:5}}>
+                    <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                       <button className="btn btn-ghost btn-sm" onClick={function(){props.setSelectedVehicle(v);props.setPage('detail');}}>View</button>
-                      <button className="btn btn-ghost btn-sm" style={{color:'var(--acc)'}} onClick={function(){generateCustomerPDF(v);}}>📱</button>
+                      <button className="btn btn-ghost btn-sm" style={{color:'var(--acc)',fontSize:11}} onClick={function(){generateCustomerPDF(v);}}>📱</button>
+                      <button className="btn btn-ghost btn-sm" style={{color:'var(--blu)',fontSize:11}} title="Vendor Report — no pricing" onClick={function(){generateVendorPDF(v);}}>🏪</button>
                       {user.role === 'admin' && <button className="btn btn-danger btn-sm" onClick={function(){props.onDelete(v.id);}}>🗑</button>}
                     </div>
                   </td>
@@ -963,7 +964,7 @@ function NewInspection(props) {
     odometer:'', insurance_expired:false, insurance_valid_od:'', insurance_valid_tp:'',
     idv:'', purchase_value:'', claim_history:'None',
     engine:'', tyres:'', battery:'', electricals:'', accidental:'No', flood:'No', rating:7,
-    price:'', remarks:'',
+    price:'', remarks:'', customer_expectation:'', seller_name:'',
     photos:{front:null,rear:null,left:null,right:null,interior1:null,interior2:null,engine:null,chassis:null,odometer_photo:null},
     docs:{rc:null,insurance:null,pollution:null,extra:null}
   });
@@ -1001,6 +1002,7 @@ function NewInspection(props) {
       id:'V'+Date.now(), brand:finalBrand, model:finalModel, variant:finalVariant,
       year:finalYear||data.year, transmission:finalTrans||data.transmission,
       odometer:parseInt(data.odometer)||0, price:parseInt(data.price)||0,
+      customer_expectation:parseInt(data.customer_expectation)||0, seller_name:data.seller_name||'', seller_phone:data.seller_phone||'',
       algo_price:algo?algo.price:0, idv:parseInt(data.idv)||0, purchase_value:parseInt(data.purchase_value)||0,
       officer:user.name, officerId:user.id, branch:user.branch,
       docs:docsClean, status:isDraft?'draft':'pending',
@@ -1018,6 +1020,12 @@ function NewInspection(props) {
         <div className="fg">
           <div className="field s2"><label>Registration Number *</label>
             <input value={data.reg} onChange={function(e){set('reg',e.target.value.toUpperCase());}} placeholder="e.g. BR04AB1234" style={{fontFamily:'DM Mono,monospace',letterSpacing:'0.1em',fontSize:16}} />
+          </div>
+          <div className="field"><label>Seller / Customer Name *</label>
+            <input value={data.seller_name} onChange={function(e){set('seller_name',e.target.value);}} placeholder="Full name of vehicle owner" />
+          </div>
+          <div className="field"><label>Seller Phone</label>
+            <input type="tel" value={data.seller_phone||''} onChange={function(e){set('seller_phone',e.target.value);}} placeholder="Contact number" />
           </div>
           <div className="field">
             <label>Brand *</label>
@@ -1257,7 +1265,20 @@ function NewInspection(props) {
         <div className="fcard">
           <div className="fcard-ttl">💰 Your Price Estimate</div>
           <div className="fcard-sub">Enter your estimated price first — algorithm reveals after</div>
-          <div style={{background:'var(--sur2)',border:'2px solid var(--acc)',borderRadius:'var(--r2)',padding:'18px',marginBottom:18}}>
+          <div style={{background:'var(--sur2)',border:'1px solid var(--bdr)',borderRadius:'var(--r2)',padding:'14px',marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:'var(--tx3)',marginBottom:8,letterSpacing:'0.07em',textTransform:'uppercase'}}>Seller's Expected Price</div>
+          <input type="number" value={data.customer_expectation} onChange={function(e){set('customer_expectation',e.target.value);}}
+            placeholder="What is the customer asking for? e.g. 1200000"
+            style={{width:'100%',fontFamily:'DM Mono,monospace',fontSize:18,padding:'11px',background:'var(--sur3)',border:'1px solid var(--bdr)',borderRadius:'var(--r)',color:'var(--txt)',outline:'none'}} />
+          {data.customer_expectation && parseInt(data.customer_expectation) > 0 && (
+            <div style={{marginTop:6,fontSize:13,color:'var(--acc)',fontFamily:'DM Mono,monospace',fontWeight:600}}>
+              Customer expects: {fmtL(data.customer_expectation)}
+            </div>
+          )}
+          <div style={{fontSize:11,color:'var(--tx3)',marginTop:5}}>This is recorded for negotiation reference — not shared with algorithm</div>
+        </div>
+
+        <div style={{background:'var(--sur2)',border:'2px solid var(--acc)',borderRadius:'var(--r2)',padding:'18px',marginBottom:18}}>
             <div style={{fontSize:11,fontWeight:700,color:'var(--acc)',marginBottom:10,letterSpacing:'0.07em',textTransform:'uppercase'}}>Step 1 — Your Estimated Purchase Price *</div>
             <input type="number" value={data.price} onChange={function(e){set('price',e.target.value);}}
               placeholder="Enter your price in ₹ e.g. 450000"
@@ -1319,7 +1340,7 @@ function NewInspection(props) {
         <div className="fcard-ttl">✅ Review & Submit</div>
         <div className="fcard-sub">Verify before sending for Incharge approval</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
-          {[['Registration',data.reg||'—'],['Vehicle',finalBrand+' '+finalModel||'—'],['Year',finalYear||data.year||'—'],['Fuel',data.fuel||'—'],['Transmission',finalTrans||data.transmission||'—'],['Odometer',data.odometer?parseInt(data.odometer).toLocaleString('en-IN')+' km':'—'],['RC Doc',data.docs.rc?data.docs.rc.name:'⚠ Not uploaded'],['Ins Doc',data.docs.insurance?data.docs.insurance.name:'⚠ Not uploaded'],['Photos',photoDone+'/8 captured'],['Your Price',fmtL(data.price)]].map(function(item) {
+          {[['Registration',data.reg||'—'],['Seller',data.seller_name||'—'],['Vehicle',finalBrand+' '+finalModel||'—'],['Year',finalYear||data.year||'—'],['Fuel',data.fuel||'—'],['Transmission',finalTrans||data.transmission||'—'],['Odometer',data.odometer?parseInt(data.odometer).toLocaleString('en-IN')+' km':'—'],['RC Doc',data.docs.rc?data.docs.rc.name:'⚠ Not uploaded'],['Ins Doc',data.docs.insurance?data.docs.insurance.name:'⚠ Not uploaded'],['Photos',photoDone+'/8 captured'],['Cust. Expects',data.customer_expectation?fmtL(data.customer_expectation):'Not entered'],['Your Price',fmtL(data.price)]].map(function(item) {
             var isWarn = item[1].startsWith('⚠') || (item[0]==='Photos' && photoDone < 8);
             return (
               <div key={item[0]} style={{padding:'9px 11px',background:'var(--sur2)',borderRadius:'var(--r)',border:'1px solid var(--bdr)'}}>
@@ -1391,6 +1412,7 @@ function VehicleDetail(props) {
           {canApprove && <button className="btn btn-success btn-sm" onClick={function(){setModal('approve');}}>✓ Approve</button>}
           {canApprove && <button className="btn btn-danger btn-sm" onClick={function(){setModal('reject');}}>✗ Reject</button>}
           <button className="btn btn-ghost btn-sm" style={{color:'var(--acc)'}} onClick={function(){generateCustomerPDF(vehicle);}}>📱 Customer PDF</button>
+          <button className="btn btn-ghost btn-sm" style={{color:'var(--blu)'}} title="Vendor report — no pricing" onClick={function(){generateVendorPDF(vehicle);}}>🏪 Vendor PDF</button>
           <button className="btn btn-acc btn-sm" onClick={function(){generateInternalPDF(vehicle,algo);}}>📄 Internal PDF</button>
         </div>
       </div>
@@ -1398,7 +1420,7 @@ function VehicleDetail(props) {
         <div>
           <div className="detail-card" style={{marginBottom:14}}>
             <div className="detail-card-ttl">🚗 Vehicle</div>
-            {[['Registration',vehicle.reg],['Brand',vehicle.brand],['Model',vehicle.model],['Variant',vehicle.variant||'—'],['Year',vehicle.year],['Fuel',vehicle.fuel],['Transmission',vehicle.transmission],['Odometer',(vehicle.odometer||0).toLocaleString('en-IN')+' km'],['Ownership',vehicle.ownership],['Branch',vehicle.branch],['Evaluator',vehicle.officer]].map(function(item) {
+            {[['Registration',vehicle.reg],['Seller',vehicle.seller_name||'—'],['Seller Phone',vehicle.seller_phone||'—'],['Brand',vehicle.brand],['Model',vehicle.model],['Variant',vehicle.variant||'—'],['Year',vehicle.year],['Fuel',vehicle.fuel],['Transmission',vehicle.transmission],['Odometer',(vehicle.odometer||0).toLocaleString('en-IN')+' km'],['Ownership',vehicle.ownership],['Branch',vehicle.branch],['Evaluator',vehicle.officer]].map(function(item) {
               return <div key={item[0]} className="drow"><span className="dkey">{item[0]}</span><span className="dval">{item[1]||'—'}</span></div>;
             })}
           </div>
@@ -1411,6 +1433,12 @@ function VehicleDetail(props) {
           <div className="detail-card">
             <div className="detail-card-ttl">💰 Price</div>
             <div style={{padding:'12px 0',textAlign:'center'}}>
+              {vehicle.customer_expectation > 0 && (
+                <div style={{marginBottom:10,padding:'7px 12px',background:'var(--sur2)',borderRadius:'var(--r)',border:'1px solid var(--bdr)'}}>
+                  <div style={{fontSize:9,color:'var(--tx3)',fontFamily:'DM Mono,monospace',marginBottom:2}}>SELLER EXPECTS</div>
+                  <div style={{fontFamily:'Syne,sans-serif',fontSize:16,fontWeight:700,color:'var(--pur)'}}>{fmtL(vehicle.customer_expectation)}</div>
+                </div>
+              )}
               <div style={{fontSize:10,color:'var(--tx3)',fontFamily:'DM Mono,monospace',marginBottom:3}}>EVALUATOR ESTIMATE</div>
               <div style={{fontFamily:'Syne,sans-serif',fontSize:22,fontWeight:800,color:'var(--acc)'}}>{fmtL(vehicle.price)}</div>
               {vehicle.algo_price > 0 && <div style={{fontSize:11,color:'var(--tx3)',marginTop:3}}>Algorithm: <b style={{color:'var(--tx2)'}}>{fmtL(vehicle.algo_price)}</b></div>}
@@ -1537,6 +1565,7 @@ function Approvals(props) {
                   {algoR && <div><div style={{fontSize:9,color:'var(--tx3)',fontFamily:'DM Mono,monospace',marginBottom:2}}>ALGORITHM</div><div style={{fontFamily:'Syne,sans-serif',fontSize:15,fontWeight:700,color:'var(--acc)'}}>{fmtL(algoR.price)}</div></div>}
                 </div>
                 <div style={{fontSize:10,color:'var(--tx3)',marginTop:5}}>Submitted by {v.officer} on {v.submitted}</div>
+                {v.seller_name && <div style={{fontSize:11,color:'var(--tx2)',marginTop:2}}>Seller: <b>{v.seller_name}</b>{v.customer_expectation>0?' · Expects: '+fmtL(v.customer_expectation):''}</div>}
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:7}}>
                 <button className="btn btn-ghost btn-sm" onClick={function(){props.setSelectedVehicle(v);props.setPage('detail');}}>👁 Details</button>
@@ -1916,6 +1945,175 @@ function EmployeeDB(props) {
 }
 
 // ── PDF GENERATORS ────────────────────────────────────────
+// ── VENDOR PDF — full details, NO pricing ────────────────
+function generateVendorPDF(vehicle) {
+  var pm = vehicle.photos || {};
+  var photoKeys = ['front','rear','left','right','interior1','interior2','engine','chassis'];
+  var pLabels = {front:'FRONT VIEW',rear:'REAR VIEW',left:'LEFT SIDE',right:'RIGHT SIDE',interior1:'INTERIOR — DASHBOARD',interior2:'INTERIOR — REAR',engine:'ENGINE BAY',chassis:'CHASSIS / VIN'};
+
+  var photosHtml = photoKeys.map(function(k) {
+    return pm[k]
+      ? '<div><div style="aspect-ratio:4/3;border-radius:7px;overflow:hidden;border:1px solid #e0e0e0"><img src="'+pm[k]+'" style="width:100%;height:100%;object-fit:cover"/></div><div style="font-size:9px;text-align:center;margin-top:4px;color:#555;font-family:monospace;letter-spacing:0.05em">'+pLabels[k]+'</div></div>'
+      : '<div><div style="aspect-ratio:4/3;background:#f5f5f5;border-radius:7px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center"><span style="font-size:28px;opacity:0.3">📷</span></div><div style="font-size:9px;text-align:center;margin-top:4px;color:#bbb;font-family:monospace">'+pLabels[k]+'</div></div>';
+  }).join('');
+
+  var condRows = [
+    ['Engine Condition',vehicle.engine],
+    ['Tyres',vehicle.tyres],
+    ['Battery',vehicle.battery],
+    ['Electricals',vehicle.electricals],
+    ['Accidental History',vehicle.accidental],
+    ['Flood Damage',vehicle.flood]
+  ].map(function(pair) {
+    var good = pair[1]==='Excellent'||pair[1]==='Good'||pair[1]==='No';
+    var bad  = pair[1]==='Yes'||pair[1]==='Poor'||pair[1]==='Worn'||pair[1]==='Dead'||pair[1]==='Issues';
+    var c = good ? '#16a34a' : bad ? '#dc2626' : '#d97706';
+    var dot = good ? '●' : bad ? '●' : '●';
+    return '<tr><td style="padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#444;width:55%">'+pair[0]+'</td><td style="padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;font-weight:700;color:'+c+'"><span style="margin-right:5px">'+dot+'</span>'+pair[1]+'</td></tr>';
+  }).join('');
+
+  var docsHtml = [['RC Certificate',vehicle.docs&&vehicle.docs.rc],['Insurance',vehicle.docs&&vehicle.docs.insurance],['PUC',vehicle.docs&&vehicle.docs.pollution]].map(function(pair) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:6px;background:'+(pair[1]?'#f0fdf4':'#fef9f0')+';border:1px solid '+(pair[1]?'#bbf7d0':'#fed7aa')+';margin-bottom:7px"><span style="font-size:16px">'+(pair[1]?'✅':'⚠️')+'</span><span style="font-size:13px;font-weight:600;color:'+(pair[1]?'#166534':'#92400e')+'">'+pair[0]+': '+(pair[1]?'Available':'Not Available')+'</span></div>';
+  }).join('');
+
+  var today = new Date().toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'});
+
+  var w = window.open('','_blank');
+  w.document.write([
+    '<!DOCTYPE html><html><head><title>Utrust Vehicle Report — '+vehicle.reg+'</title>',
+    '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<style>',
+    '*{box-sizing:border-box;margin:0;padding:0;}',
+    'body{font-family:"Segoe UI",Arial,sans-serif;background:#fff;color:#111;font-size:14px;}',
+    '.hdr{background:#0a0b0d;padding:0;}',
+    '.hdr-top{display:flex;justify-content:space-between;align-items:center;padding:22px 36px;border-bottom:3px solid #f5a623;}',
+    '.hdr-bot{padding:18px 36px;display:flex;align-items:center;gap:24px;background:#111318;}',
+    '.logo{display:flex;align-items:center;gap:12px;}',
+    '.logo-icon{width:42px;height:42px;background:#f5a623;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}',
+    '.logo-name{font-size:22px;font-weight:900;color:#fff;letter-spacing:-0.02em;}',
+    '.logo-tag{font-size:10px;color:#888;letter-spacing:0.1em;text-transform:uppercase;margin-top:2px;}',
+    '.reg-badge{font-family:monospace;font-size:22px;font-weight:800;color:#f5a623;letter-spacing:0.1em;}',
+    '.ref-num{font-size:11px;color:#666;margin-top:4px;}',
+    '.doc-type{background:#f5a623;color:#000;font-size:10px;font-weight:800;padding:4px 12px;border-radius:4px;letter-spacing:0.08em;text-transform:uppercase;}',
+    '.hdr-meta{display:flex;gap:28px;align-items:center;}',
+    '.meta-item{text-align:center;}',
+    '.meta-val{font-size:13px;font-weight:700;color:#e8eaf0;}',
+    '.meta-lbl{font-size:9px;color:#666;letter-spacing:0.07em;text-transform:uppercase;font-family:monospace;margin-top:2px;}',
+    '.body{padding:30px 36px;}',
+    '.vehicle-name{font-size:30px;font-weight:900;margin-bottom:5px;letter-spacing:-0.01em;}',
+    '.vehicle-sub{color:#666;font-size:14px;margin-bottom:26px;}',
+    '.sec-ttl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#888;border-bottom:2px solid #f5a623;padding-bottom:7px;margin-bottom:14px;margin-top:26px;}',
+    '.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}',
+    '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}',
+    '.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:9px;}',
+    '.info-box{background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:12px 14px;}',
+    '.info-lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:#888;margin-bottom:4px;font-family:monospace;}',
+    '.info-val{font-size:14px;font-weight:700;color:#111;}',
+    '.cond-table{width:100%;border-collapse:collapse;border:1px solid #eee;border-radius:8px;overflow:hidden;}',
+    '.cond-table th{background:#f8f9fa;padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:#666;}',
+    '.rating-bar{height:10px;background:#eee;border-radius:5px;overflow:hidden;margin-top:6px;}',
+    '.rating-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,#f5a623,#22c55e);}',
+    '.no-price-banner{background:#f8f9fa;border:2px solid #e0e0e0;border-radius:12px;padding:18px 24px;margin:20px 0;text-align:center;}',
+    '.footer{background:#f8f9fa;padding:16px 36px;border-top:1px solid #eee;margin-top:28px;display:flex;justify-content:space-between;align-items:center;}',
+    '.sig-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:36px;}',
+    '.sig-box{border-top:2px solid #333;padding-top:10px;font-size:11px;color:#888;line-height:1.8;}',
+    '.watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;font-weight:900;color:rgba(245,166,35,0.06);white-space:nowrap;pointer-events:none;z-index:0;}',
+    '@media print{.no-print{display:none!important;}.watermark{position:fixed;}}',
+    '</style></head><body>',
+    '<div class="watermark">UTRUST VEHICLE REPORT</div>',
+
+    // HEADER
+    '<div class="hdr">',
+    '<div class="hdr-top">',
+    '<div class="logo"><div class="logo-icon">🚗</div><div><div class="logo-name">Utrust</div><div class="logo-tag">Vehicle Inspection Report</div></div></div>',
+    '<div style="text-align:right"><div class="doc-type">Vendor Copy — No Pricing</div><div style="font-size:11px;color:#666;margin-top:6px">Generated: '+today+'</div></div>',
+    '</div>',
+    '<div class="hdr-bot">',
+    '<div style="flex:1"><div class="reg-badge">'+vehicle.reg+'</div><div class="ref-num" style="color:#888">Inspection ID: '+vehicle.id+'</div></div>',
+    '<div class="hdr-meta">',
+    '<div class="meta-item"><div class="meta-val">'+vehicle.branch+'</div><div class="meta-lbl">Branch</div></div>',
+    '<div class="meta-item"><div class="meta-val">'+vehicle.submitted+'</div><div class="meta-lbl">Inspected On</div></div>',
+    '<div class="meta-item"><div class="meta-val">'+vehicle.officer+'</div><div class="meta-lbl">Evaluator</div></div>',
+    (vehicle.seller_name?'<div class="meta-item"><div class="meta-val">'+vehicle.seller_name+'</div><div class="meta-lbl">Seller</div></div>':''),
+    '</div></div></div>',
+
+    // BODY
+    '<div class="body">',
+    '<div class="vehicle-name">'+vehicle.brand+' '+vehicle.model+' '+vehicle.variant+'</div>',
+    '<div class="vehicle-sub">'+vehicle.year+' &nbsp;·&nbsp; '+vehicle.fuel+' &nbsp;·&nbsp; '+vehicle.transmission+' &nbsp;·&nbsp; '+vehicle.ownership+' Owner &nbsp;·&nbsp; '+Number(vehicle.odometer||0).toLocaleString('en-IN')+' km</div>',
+
+    // Vehicle Details
+    '<div class="sec-ttl">Vehicle Details</div>',
+    '<div class="grid3">',
+    '<div class="info-box"><div class="info-lbl">Registration</div><div class="info-val" style="font-family:monospace;letter-spacing:0.08em;color:#f5a623">'+vehicle.reg+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Brand</div><div class="info-val">'+vehicle.brand+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Model</div><div class="info-val">'+vehicle.model+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Variant</div><div class="info-val">'+(vehicle.variant||'—')+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Year of Manufacture</div><div class="info-val">'+vehicle.year+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Fuel Type</div><div class="info-val">'+vehicle.fuel+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Transmission</div><div class="info-val">'+vehicle.transmission+'</div></div>',
+    '<div class="info-box"><div class="info-lbl">Ownership</div><div class="info-val">'+vehicle.ownership+' Owner</div></div>',
+    '<div class="info-box"><div class="info-lbl">Odometer Reading</div><div class="info-val" style="font-family:monospace">'+Number(vehicle.odometer||0).toLocaleString('en-IN')+' km</div></div>',
+    '</div>',
+
+    // Insurance
+    '<div class="sec-ttl">Insurance Status</div>',
+    '<div class="grid3">',
+    '<div class="info-box"><div class="info-lbl">Insurance Status</div><div class="info-val" style="color:'+(vehicle.insurance_expired?'#dc2626':'#16a34a')+'">'+(vehicle.insurance_expired?'❌ Expired':'✅ Active')+'</div></div>',
+    (!vehicle.insurance_expired?'<div class="info-box"><div class="info-lbl">OD Valid Until</div><div class="info-val">'+(vehicle.insurance_valid_od||'—')+'</div></div><div class="info-box"><div class="info-lbl">TP Valid Until</div><div class="info-val">'+(vehicle.insurance_valid_tp||'—')+'</div></div>':'<div class="info-box"><div class="info-lbl">Claim History</div><div class="info-val">'+(vehicle.claim_history||'—')+'</div></div><div class="info-box"></div>'),
+    '</div>',
+
+    // Documents
+    '<div class="sec-ttl">Document Status</div>',
+    '<div style="margin-bottom:8px">'+docsHtml+'</div>',
+
+    // Photos
+    '<div class="sec-ttl">Inspection Photos ('+photoKeys.filter(function(k){return !!pm[k];}).length+'/8 captured)</div>',
+    '<div class="grid4" style="margin-bottom:8px">'+photosHtml+'</div>',
+
+    // Condition
+    '<div class="sec-ttl">Condition Assessment</div>',
+    '<div class="grid2">',
+    '<table class="cond-table"><thead><tr><th>Component</th><th>Condition</th></tr></thead><tbody>'+condRows+'</tbody></table>',
+    '<div>',
+    '<div style="padding:14px;background:#f8f9fa;border:1px solid #eee;border-radius:8px;margin-bottom:10px">',
+    '<div style="font-size:11px;color:#888;font-family:monospace;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:8px">Overall Rating</div>',
+    '<div style="font-size:32px;font-weight:900;color:#f5a623">'+vehicle.rating+'<span style="font-size:14px;color:#888;font-weight:400">/10</span></div>',
+    '<div class="rating-bar"><div class="rating-fill" style="width:'+(vehicle.rating*10)+'%"></div></div>',
+    '</div>',
+    (vehicle.remarks?'<div style="padding:12px 14px;background:#fffbf0;border-left:4px solid #f5a623;border-radius:0 8px 8px 0;font-size:13px;line-height:1.6"><b>Evaluator Remarks:</b><br/>'+vehicle.remarks+'</div>':''),
+    '</div></div>',
+
+    // No Pricing Banner
+    '<div class="no-price-banner">',
+    '<div style="font-size:28px;margin-bottom:8px">🔒</div>',
+    '<div style="font-size:15px;font-weight:700;color:#444;margin-bottom:4px">Pricing Not Disclosed</div>',
+    '<div style="font-size:12px;color:#888">This report is for vehicle condition reference only.<br/>Pricing details are managed exclusively by Prakash Toyota — Utrust Division.</div>',
+    '</div>',
+
+    // Signatures
+    '<div class="sig-grid">',
+    '<div class="sig-box">Inspected By<br/><b style="color:#111;font-size:13px">'+vehicle.officer+'</b><br/>'+vehicle.branch+' Branch<br/>'+vehicle.submitted+'</div>',
+    '<div class="sig-box">Vendor Representative<br/><br/><br/>Signature &amp; Stamp</div>',
+    '<div class="sig-box">Prakash Toyota — Utrust<br/><br/><br/>Authorised Signatory</div>',
+    '</div></div>',
+
+    // Footer
+    '<div class="footer">',
+    '<div style="font-size:11px;color:#888">Utrust Vehicle Management · Prakash Toyota · This report is valid for 7 days from date of inspection.</div>',
+    '<div style="font-size:11px;color:#888">Generated: '+today+'</div>',
+    '</div>',
+
+    // Print button
+    '<div class="no-print" style="text-align:center;padding:18px;background:#f0f0f0;border-top:1px solid #ddd">',
+    '<button onclick="window.print()" style="padding:11px 28px;background:#f5a623;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer">🖨 Print / Save as PDF</button>',
+    '</div>',
+    '</body></html>'
+  ].join(''));
+  w.document.close();
+}
+
+
 function generateCustomerPDF(vehicle) {
   var pm = vehicle.photos || {};
   var photoKeys = ['front','rear','left','right','interior1','interior2','engine','chassis'];
